@@ -13,6 +13,8 @@
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     <!-- html2canvas (画像ダウンロード用) -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
 
     <style>
         body { font-family: 'Hiragino Kaku Gothic ProN', 'Noto Sans JP', sans-serif; background-color: #e2e8f0; touch-action: manipulation; }
@@ -32,15 +34,46 @@
             from { opacity: 0; transform: scale(0.9); }
             to { opacity: 1; transform: scale(1); }
         }
+        
+        /* タイピング中インジケーターのアニメーション */
+        .typing-dot {
+            animation: typing 1.4s infinite ease-in-out both;
+        }
+        .typing-dot:nth-child(1) { animation-delay: -0.32s; }
+        .typing-dot:nth-child(2) { animation-delay: -0.16s; }
+        @keyframes typing {
+            0%, 80%, 100% { transform: scale(0); }
+            40% { transform: scale(1); }
+        }
+
+        .blink-cursor {
+            animation: blink 1s step-end infinite;
+        }
+        @keyframes blink {
+            50% { border-color: transparent; }
+        }
     </style>
 </head>
 <body>
     <div id="root"></div>
 
     <script type="text/babel">
-        const { useState, useEffect, useRef } = React;
+        const { useState, useEffect, useRef, useMemo } = React;
 
-        // クイズのデータ（ひらがな・カタカナのみ、全20問に増量）
+        // --- Lucide Icon Component Helper ---
+        const Icon = ({ name, size = 24, className = "" }) => {
+            const iconData = useMemo(() => {
+                if (!window.lucide || !lucide.icons) return null;
+                const key = name.charAt(0).toLowerCase() + name.slice(1);
+                return lucide.icons[key] || lucide.icons[name] || lucide.icons[name.toLowerCase()];
+            }, [name]);
+            if (!iconData) return <span className={className} style={{ width: size, height: size, display: 'inline-block' }} />;
+            return (
+                <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className} dangerouslySetInnerHTML={{__html: iconData.map(([tag, attrs]) => `<${tag} ${Object.entries(attrs).map(([k, v]) => `${k}="${v}"`).join(" ")} />`).join("")}} />
+            );
+        };
+
+        // クイズのデータ（ひらがな・カタカナのみ、全20問）
         const QUIZ_DATA = [
             { character: "teacher", name: "たなかせんせい", avatar: "👩‍🏫", theme: "blue", question: "きのう、にほんごを べんきょうしましたか？", userPrefix: "はい、", options: ["べんきょうしました", "べんきょうした", "べんきょうします", "べんきょうして"], correctIndex: 0, desc: "Teacher -> Polite. Past affirmative -> べんきょうしました." },
             { character: "friend", name: "ケン", avatar: "👦", theme: "orange", question: "しゅうまつ、えいがを みる？", userPrefix: "ううん、", options: ["みない", "みません", "みなかった", "みないです"], correctIndex: 0, desc: "Friend -> Plain. Present negative -> みない." },
@@ -57,7 +90,7 @@
             { character: "friend", name: "ケン", avatar: "👦", theme: "orange", question: "その ケーキ、おいしい？", userPrefix: "うん、", options: ["おいしいだ", "おいしいよ", "おいしいです", "おいしかった"], correctIndex: 1, desc: "Friend -> Plain. i-Adjective present -> おいしい(よ)." },
             { character: "teacher", name: "たなかせんせい", avatar: "👩‍🏫", theme: "blue", question: "せんしゅうの りょこうは たのしかったですか？", userPrefix: "はい、とても", options: ["たのしいでした", "たのしかった", "たのしかったです", "たのしかったでした"], correctIndex: 2, desc: "Teacher -> Polite. i-Adjective past -> たのしかったです." },
             { character: "friend", name: "ユイ", avatar: "👩", theme: "orange", question: "きのう、どこかへ いった？", userPrefix: "ううん、どこへも", options: ["いかなかった", "いかない", "いきませんでした", "いってない"], correctIndex: 0, desc: "Friend -> Plain. Verb past negative -> いかなかった." },
-            { character: "teacher", name: "やまだせんせい", avatar: "👨‍🏫", theme: "blue", question: "ここは ゆうめいですか？", userPrefix: "はい、とても", options: ["ゆうめいです", "ゆうめいだ", "ゆうめいな", "ゆうめいじゃないね"], correctIndex: 0, desc: "Teacher -> Polite. na-Adjective present -> ゆうめいです." },
+            { character: "teacher", name: "やまだせんせい", avatar: "👨‍🏫", theme: "blue", question: "ここは ゆうめいですか？", userPrefix: "はい、とても", options: ["ゆうめいです", "ゆうめいだ", "ゆうめいな", "ゆうめいですね"], correctIndex: 0, desc: "Teacher -> Polite. na-Adjective present -> ゆうめいです." },
             { character: "friend", name: "ケン", avatar: "👦", theme: "orange", question: "くるま、もっている？", userPrefix: "ううん、", options: ["もっていない", "もっていません", "もってないです", "もたない"], correctIndex: 0, desc: "Friend -> Plain. Verb present negative -> もっていない." },
             { character: "teacher", name: "たなかせんせい", avatar: "👩‍🏫", theme: "blue", question: "これから かえりますか？", userPrefix: "はい、", options: ["かえります", "かえる", "かえりますよ", "かえって"], correctIndex: 0, desc: "Teacher -> Polite. Verb present -> かえります." },
             { character: "friend", name: "ユイ", avatar: "👩", theme: "orange", question: "あの ひと、だれ？", userPrefix: "ああ、わたしの", options: ["ともだちです", "ともだちじゃないです", "ともだちだよ", "ともだちな"], correctIndex: 2, desc: "Friend -> Plain. Noun present -> ともだちだ(よ)." },
@@ -74,10 +107,114 @@
             return newArray;
         };
 
+        // --- Audio & TTS Logic ---
+        const playRingSound = () => {
+            try {
+                const ctx = new (window.AudioContext || window.webkitAudioContext)();
+                
+                // 最初の音
+                const osc1 = ctx.createOscillator();
+                const gain1 = ctx.createGain();
+                osc1.connect(gain1); gain1.connect(ctx.destination);
+                osc1.type = 'sine';
+                osc1.frequency.setValueAtTime(880, ctx.currentTime); // A5
+                gain1.gain.setValueAtTime(0, ctx.currentTime);
+                gain1.gain.linearRampToValueAtTime(0.2, ctx.currentTime + 0.05);
+                gain1.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.15);
+                osc1.start(ctx.currentTime);
+                osc1.stop(ctx.currentTime + 0.15);
+
+                // 2番目の音
+                const osc2 = ctx.createOscillator();
+                const gain2 = ctx.createGain();
+                osc2.connect(gain2); gain2.connect(ctx.destination);
+                osc2.type = 'sine';
+                osc2.frequency.setValueAtTime(1108.73, ctx.currentTime + 0.2); // C#6
+                gain2.gain.setValueAtTime(0, ctx.currentTime + 0.2);
+                gain2.gain.linearRampToValueAtTime(0.2, ctx.currentTime + 0.25);
+                gain2.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.35);
+                osc2.start(ctx.currentTime + 0.2);
+                osc2.stop(ctx.currentTime + 0.35);
+            } catch (e) {}
+        };
+
+        const playAudio = (type) => {
+            try {
+                const ctx = new (window.AudioContext || window.webkitAudioContext)();
+                const osc = ctx.createOscillator();
+                const gainNode = ctx.createGain();
+                osc.connect(gainNode);
+                gainNode.connect(ctx.destination);
+                
+                if (type === 'correct') {
+                    osc.type = 'sine';
+                    osc.frequency.setValueAtTime(880, ctx.currentTime);
+                    osc.frequency.setValueAtTime(1108.73, ctx.currentTime + 0.1);
+                    gainNode.gain.setValueAtTime(0, ctx.currentTime);
+                    gainNode.gain.linearRampToValueAtTime(0.3, ctx.currentTime + 0.02);
+                    gainNode.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.3);
+                    osc.start(ctx.currentTime);
+                    osc.stop(ctx.currentTime + 0.3);
+                } else {
+                    osc.type = 'sawtooth';
+                    osc.frequency.setValueAtTime(150, ctx.currentTime);
+                    osc.frequency.exponentialRampToValueAtTime(100, ctx.currentTime + 0.2);
+                    gainNode.gain.setValueAtTime(0, ctx.currentTime);
+                    gainNode.gain.linearRampToValueAtTime(0.2, ctx.currentTime + 0.02);
+                    gainNode.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.2);
+                    osc.start(ctx.currentTime);
+                    osc.stop(ctx.currentTime + 0.2);
+                }
+            } catch (e) {}
+        };
+
+        const speakQuestion = (text, onEndCallback) => {
+            if (!('speechSynthesis' in window)) {
+                setTimeout(onEndCallback, 2000); // TTS非対応時のフォールバック
+                return;
+            }
+            window.speechSynthesis.cancel();
+            const uttr = new SpeechSynthesisUtterance(text);
+            uttr.lang = 'ja-JP';
+            uttr.rate = 0.9;
+            
+            const voices = window.speechSynthesis.getVoices();
+            let selectedVoice = voices.find(voice => voice.lang.includes('ja') && voice.name.includes('Google'));
+            if (!selectedVoice) selectedVoice = voices.find(voice => voice.lang.includes('ja'));
+            if (selectedVoice) uttr.voice = selectedVoice;
+
+            uttr.onend = () => {
+                if (onEndCallback) onEndCallback();
+            };
+            uttr.onerror = () => {
+                if (onEndCallback) onEndCallback();
+            };
+
+            window.speechSynthesis.speak(uttr);
+        };
+
+        // --- Components ---
+        const TitleScreen = ({ onStart }) => (
+            <div className="min-h-screen flex flex-col items-center justify-center p-4 bg-slate-900 text-white">
+                <div className="mb-8 text-blue-400">
+                    <Icon name="MessageCircle" size={120} />
+                </div>
+                <h1 className="text-5xl md:text-7xl font-black mb-12 text-center leading-tight tracking-tighter">Plain <span className="text-gray-400 font-normal">vs</span> Polite<br/>Chat Quiz</h1>
+                <button 
+                    onClick={onStart} 
+                    className="px-16 py-6 bg-blue-600 text-white text-3xl font-black rounded-full hover:bg-blue-500 shadow-[0_0_30px_rgba(37,99,235,0.5)] transition-all active:scale-95 flex items-center gap-3"
+                >
+                    <Icon name="Play" size={32} /> START CHAT
+                </button>
+            </div>
+        );
+
         const App = () => {
             const [questions, setQuestions] = useState([]);
             const [currentIndex, setCurrentIndex] = useState(0);
-            const [gameState, setGameState] = useState("loading"); // loading, playing, answered, finished
+            
+            // Phase: title -> incoming -> reading -> waiting -> answered -> finished
+            const [gameState, setGameState] = useState("title"); 
             const [selectedOption, setSelectedOption] = useState(null);
             const [score, setScore] = useState(0);
             
@@ -86,18 +223,49 @@
             const [isGeneratingImg, setIsGeneratingImg] = useState(false);
             const certificateRef = useRef(null);
             
-            const QUESTIONS_PER_GAME = 10; // 1回のゲームでの出題数
+            const QUESTIONS_PER_GAME = 10;
 
             useEffect(() => {
-                // 全問題からシャッフルして10問だけ抽出
-                setQuestions(shuffleArray(QUIZ_DATA).slice(0, QUESTIONS_PER_GAME));
-                setGameState("playing");
+                if ('speechSynthesis' in window) {
+                    window.speechSynthesis.onvoiceschanged = () => window.speechSynthesis.getVoices();
+                }
             }, []);
+
+            const startQuestionPhase = (idx) => {
+                setGameState("incoming");
+                playRingSound();
+                
+                // 着信音の後、メッセージを表示して読み上げ開始
+                setTimeout(() => {
+                    setGameState("reading");
+                }, 1200);
+            };
+
+            // gameState が reading になったらTTSを実行
+            useEffect(() => {
+                if (gameState === "reading" && questions[currentIndex]) {
+                    speakQuestion(questions[currentIndex].question, () => {
+                        setGameState("waiting"); // 読み上げが終わったら回答可能に
+                    });
+                }
+            }, [gameState, currentIndex, questions]);
+
+            const handleStart = () => {
+                setQuestions(shuffleArray(QUIZ_DATA).slice(0, QUESTIONS_PER_GAME));
+                setCurrentIndex(0);
+                setScore(0);
+                setSelectedOption(null);
+                
+                // AudioContextを初期化するため、最初のユーザーインタラクション内でダミー再生
+                try { const ctx = new (window.AudioContext || window.webkitAudioContext)(); ctx.resume(); } catch(e){}
+                
+                startQuestionPhase(0);
+            };
 
             const currentQ = questions[currentIndex];
 
             const handleSelect = (index) => {
-                if (gameState !== "playing") return;
+                if (gameState !== "waiting") return;
                 
                 setSelectedOption(index);
                 if (index === currentQ.correctIndex) {
@@ -113,19 +281,18 @@
                 if (currentIndex < questions.length - 1) {
                     setCurrentIndex(currentIndex + 1);
                     setSelectedOption(null);
-                    setGameState("playing");
+                    startQuestionPhase(currentIndex + 1);
                 } else {
                     setGameState("finished");
                 }
             };
 
             const resetGame = () => {
-                // もう一度遊ぶ時も新たにシャッフルして10問抽出
                 setQuestions(shuffleArray(QUIZ_DATA).slice(0, QUESTIONS_PER_GAME));
                 setCurrentIndex(0);
                 setScore(0);
                 setSelectedOption(null);
-                setGameState("playing");
+                startQuestionPhase(0);
             };
 
             const downloadCertificate = async () => {
@@ -150,70 +317,38 @@
                 }
             };
 
-            const playAudio = (type) => {
-                try {
-                    const ctx = new (window.AudioContext || window.webkitAudioContext)();
-                    const osc = ctx.createOscillator();
-                    const gainNode = ctx.createGain();
-                    osc.connect(gainNode);
-                    gainNode.connect(ctx.destination);
-                    
-                    if (type === 'correct') {
-                        osc.type = 'sine';
-                        osc.frequency.setValueAtTime(880, ctx.currentTime);
-                        osc.frequency.setValueAtTime(1108.73, ctx.currentTime + 0.1);
-                        gainNode.gain.setValueAtTime(0, ctx.currentTime);
-                        gainNode.gain.linearRampToValueAtTime(0.3, ctx.currentTime + 0.02);
-                        gainNode.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.3);
-                        osc.start(ctx.currentTime);
-                        osc.stop(ctx.currentTime + 0.3);
-                    } else {
-                        osc.type = 'sawtooth';
-                        osc.frequency.setValueAtTime(150, ctx.currentTime);
-                        osc.frequency.exponentialRampToValueAtTime(100, ctx.currentTime + 0.2);
-                        gainNode.gain.setValueAtTime(0, ctx.currentTime);
-                        gainNode.gain.linearRampToValueAtTime(0.2, ctx.currentTime + 0.02);
-                        gainNode.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.2);
-                        osc.start(ctx.currentTime);
-                        osc.stop(ctx.currentTime + 0.2);
-                    }
-                } catch (e) {}
-            };
-
-            if (gameState === "loading" || !currentQ) return <div className="min-h-screen flex items-center justify-center">Loading...</div>;
+            if (gameState === "title") return <TitleScreen onStart={handleStart} />;
 
             if (gameState === "finished") {
                 const isPerfect = score === questions.length;
-                
                 return (
                     <div className="min-h-screen flex flex-col items-center justify-center p-4">
                         {isPerfect ? (
-                            // 全問正解時の合格証UI
-                            <div className="max-w-md w-full flex flex-col gap-4 slide-up">
-                                <div ref={certificateRef} className="bg-white p-8 rounded-2xl shadow-xl text-center border-4 border-yellow-400 relative overflow-hidden">
-                                    <div className="absolute top-0 right-0 p-4 opacity-20 text-6xl">👑</div>
+                            <div className="max-w-xl w-full flex flex-col gap-4 slide-up">
+                                <div ref={certificateRef} className="bg-white p-10 rounded-3xl shadow-2xl text-center border-8 border-yellow-400 relative overflow-hidden">
+                                    <div className="absolute top-0 right-0 p-6 opacity-20 text-8xl">👑</div>
                                     
-                                    <h2 className="text-xl font-bold text-gray-400 mb-2 uppercase tracking-widest">Certificate of Mastery</h2>
-                                    <p className="text-3xl font-black text-blue-600 mb-6">Polite & Plain Style</p>
+                                    <h2 className="text-2xl font-bold text-gray-400 mb-2 uppercase tracking-widest">Certificate of Mastery</h2>
+                                    <p className="text-4xl font-black text-blue-600 mb-8">Polite & Plain Style</p>
                                     
-                                    <div className="mb-4 bg-gray-50 p-3 rounded-lg border border-gray-200">
-                                        <label className="block text-xs font-bold text-gray-400 mb-1">Presented to</label>
+                                    <div className="mb-6 bg-gray-50 p-4 rounded-xl border border-gray-200">
+                                        <label className="block text-sm font-bold text-gray-400 mb-2">Presented to</label>
                                         <input 
                                             type="text" 
                                             maxLength="15"
                                             placeholder="Your Name" 
                                             value={playerName}
                                             onChange={(e) => setPlayerName(e.target.value)}
-                                            className="w-full text-center text-3xl font-black text-gray-800 bg-transparent border-none focus:outline-none focus:ring-0 placeholder-gray-300"
+                                            className="w-full text-center text-4xl font-black text-gray-800 bg-transparent border-none focus:outline-none focus:ring-0 placeholder-gray-300"
                                         />
                                     </div>
 
-                                    <div className="my-4">
-                                        <p className="text-5xl font-black text-yellow-500 mb-2">PERFECT SCORE</p>
-                                        <p className="font-bold text-gray-600">{score} / {questions.length}</p>
+                                    <div className="my-6">
+                                        <p className="text-6xl font-black text-yellow-500 mb-2">PERFECT SCORE</p>
+                                        <p className="text-2xl font-bold text-gray-600">{score} / {questions.length}</p>
                                     </div>
                                     
-                                    <div className="text-xs text-gray-400 font-bold mt-4 pt-4 border-t border-gray-100">
+                                    <div className="text-sm text-gray-400 font-bold mt-6 pt-6 border-t border-gray-100">
                                         Generated by Plain vs Polite Chat Quiz
                                     </div>
                                 </div>
@@ -221,26 +356,26 @@
                                 <button 
                                     onClick={downloadCertificate} 
                                     disabled={isGeneratingImg}
-                                    className={`w-full text-white font-bold py-4 rounded-xl transition-colors shadow-[0_4px_0_0_rgba(29,78,216,1)] active:shadow-none active:translate-y-1 text-lg flex justify-center items-center gap-2
+                                    className={`w-full text-white font-bold py-5 rounded-2xl transition-colors shadow-[0_6px_0_0_rgba(29,78,216,1)] active:shadow-none active:translate-y-1 text-2xl flex justify-center items-center gap-3
                                         ${isGeneratingImg ? 'bg-blue-400 cursor-not-allowed' : 'bg-blue-500 hover:bg-blue-600'}`}
                                 >
+                                    <Icon name="Download" size={28} />
                                     {isGeneratingImg ? "Generating..." : "Save Certificate as PNG"}
                                 </button>
-                                <button onClick={resetGame} className="w-full bg-gray-500 text-white font-bold py-4 rounded-xl hover:bg-gray-600 transition-colors shadow-[0_4px_0_0_rgba(75,85,99,1)] active:shadow-none active:translate-y-1 text-lg">
-                                    Play Again
+                                <button onClick={resetGame} className="w-full bg-gray-600 text-white font-bold py-5 rounded-2xl hover:bg-gray-700 transition-colors shadow-[0_6px_0_0_rgba(55,65,81,1)] active:shadow-none active:translate-y-1 text-2xl flex justify-center items-center gap-3 mt-2">
+                                    <Icon name="RefreshCw" size={28} /> Play Again
                                 </button>
                             </div>
                         ) : (
-                            // 満点以外の通常リザルトUI
-                            <div className="bg-white p-8 rounded-2xl shadow-xl text-center max-w-md w-full pop-in">
-                                <h2 className="text-3xl font-black text-gray-800 mb-4">Chat Complete!</h2>
-                                <p className="text-6xl font-black text-blue-500 mb-2">{score} <span className="text-2xl text-gray-400">/ {questions.length}</span></p>
-                                <p className="text-gray-600 font-bold mb-8">
+                            <div className="bg-white p-10 rounded-3xl shadow-2xl text-center max-w-xl w-full pop-in">
+                                <h2 className="text-5xl font-black text-gray-800 mb-6">Chat Complete!</h2>
+                                <p className="text-8xl font-black text-blue-500 mb-4">{score} <span className="text-4xl text-gray-400">/ {questions.length}</span></p>
+                                <p className="text-gray-600 text-xl font-bold mb-10 leading-relaxed">
                                     {score >= questions.length * 0.7 ? "Great job! Keep it up! 👍" : "Nice try! Let's practice more! 💪"}
-                                    <br/><span className="text-sm text-red-500 mt-2 block">Get a perfect score to earn a certificate!</span>
+                                    <br/><span className="text-lg text-red-500 mt-4 block">Get a perfect score to earn a certificate!</span>
                                 </p>
-                                <button onClick={resetGame} className="w-full bg-blue-500 text-white font-bold py-4 rounded-xl hover:bg-blue-600 transition-colors shadow-[0_4px_0_0_rgba(29,78,216,1)] active:shadow-none active:translate-y-1 text-lg">
-                                    Try Again
+                                <button onClick={resetGame} className="w-full bg-blue-500 text-white font-bold py-5 rounded-2xl hover:bg-blue-600 transition-colors shadow-[0_6px_0_0_rgba(29,78,216,1)] active:shadow-none active:translate-y-1 text-2xl flex justify-center items-center gap-3">
+                                    <Icon name="RefreshCw" size={28} /> Try Again
                                 </button>
                             </div>
                         )}
@@ -249,92 +384,118 @@
             }
 
             const isCorrect = selectedOption === currentQ.correctIndex;
+            const OPTION_LABELS = ['A', 'B', 'C', 'D'];
 
             return (
-                <div className="min-h-screen max-w-lg mx-auto bg-slate-100 flex flex-col relative overflow-hidden shadow-2xl md:my-4 md:rounded-3xl md:h-[90vh]">
+                <div className="min-h-screen max-w-2xl mx-auto bg-slate-100 flex flex-col relative overflow-hidden shadow-2xl md:my-6 md:rounded-3xl md:h-[92vh]">
                     
                     {/* Header */}
-                    <header className="bg-white shadow-sm p-4 flex items-center justify-between z-10">
-                        <div className="flex items-center gap-2">
-                            <span className="text-2xl">{currentQ.avatar}</span>
-                            <span className="font-bold text-gray-800">{currentQ.name}</span>
+                    <header className="bg-white shadow-sm p-5 flex items-center justify-between z-10 shrink-0">
+                        <div className="flex items-center gap-3">
+                            <span className="text-4xl">{currentQ.avatar}</span>
+                            <span className="text-xl font-bold text-gray-800">{currentQ.name}</span>
                         </div>
-                        <div className="bg-gray-200 text-gray-600 font-bold px-3 py-1 rounded-full text-sm">
+                        <div className="bg-gray-200 text-gray-600 font-bold px-4 py-2 rounded-full text-lg">
                             {currentIndex + 1} / {questions.length}
                         </div>
                     </header>
 
                     {/* Chat Area */}
-                    <div className="flex-1 overflow-y-auto p-4 flex flex-col gap-6">
+                    <div className="flex-1 overflow-y-auto p-4 md:p-6 flex flex-col gap-8">
                         
-                        {/* Opponent's Message */}
-                        <div className="flex items-start gap-3 slide-in-left">
-                            <div className="text-4xl">{currentQ.avatar}</div>
-                            <div className="flex flex-col">
-                                <span className="text-xs text-gray-500 ml-1 mb-1 font-bold">{currentQ.name}</span>
-                                <div className={`px-5 py-3 rounded-2xl rounded-tl-none shadow-sm text-lg font-bold
-                                    ${currentQ.theme === 'blue' ? 'bg-blue-100 text-blue-900' : 'bg-orange-100 text-orange-900'}`}>
-                                    {currentQ.question}
+                        {/* Opponent's Message (着信フェーズと表示フェーズの切り替え) */}
+                        {gameState === "incoming" ? (
+                            <div className="flex items-start gap-4 pop-in">
+                                <div className="text-6xl">{currentQ.avatar}</div>
+                                <div className="flex flex-col">
+                                    <span className="text-base text-gray-500 ml-2 mb-1 font-bold">{currentQ.name}</span>
+                                    <div className="px-6 py-5 rounded-3xl rounded-tl-none shadow-md bg-white text-gray-400 flex gap-2 items-center">
+                                        <span className="w-4 h-4 bg-gray-400 rounded-full typing-dot"></span>
+                                        <span className="w-4 h-4 bg-gray-400 rounded-full typing-dot"></span>
+                                        <span className="w-4 h-4 bg-gray-400 rounded-full typing-dot"></span>
+                                    </div>
                                 </div>
                             </div>
-                        </div>
+                        ) : (
+                            <div className="flex items-start gap-4 slide-in-left">
+                                <div className="text-6xl shrink-0">{currentQ.avatar}</div>
+                                <div className="flex flex-col max-w-[85%]">
+                                    <span className="text-base text-gray-500 ml-2 mb-1 font-bold">{currentQ.name}</span>
+                                    <div className={`px-6 py-5 rounded-3xl rounded-tl-none shadow-md text-2xl md:text-3xl font-bold leading-snug
+                                        ${currentQ.theme === 'blue' ? 'bg-blue-100 text-blue-900' : 'bg-orange-100 text-orange-900'}`}>
+                                        {currentQ.question}
+                                    </div>
+                                </div>
+                            </div>
+                        )}
 
-                        {/* User's Message */}
-                        <div className="flex items-end justify-end gap-3 slide-in-right mt-4">
-                            <div className="flex flex-col items-end">
-                                <span className="text-xs text-gray-500 mr-1 mb-1 font-bold">You</span>
-                                <div className="bg-green-500 text-white px-5 py-3 rounded-2xl rounded-tr-none shadow-sm text-lg font-bold flex items-center gap-2">
-                                    {currentQ.userPrefix}
-                                    {gameState === "playing" ? (
-                                        <span className="inline-block border-b-2 border-white w-16 blink-cursor"></span>
-                                    ) : (
-                                        <span className={`px-2 py-1 rounded bg-white font-black
-                                            ${isCorrect ? 'text-green-600' : 'text-red-500 line-through'}`}>
-                                            {currentQ.options[selectedOption]}
-                                        </span>
+                        {/* User's Message (回答フェーズのみ表示) */}
+                        {(gameState === "waiting" || gameState === "answered") && (
+                            <div className="flex items-end justify-end gap-4 slide-in-right mt-4">
+                                <div className="flex flex-col items-end max-w-[85%]">
+                                    <span className="text-base text-gray-500 mr-2 mb-1 font-bold">You</span>
+                                    <div className="bg-green-500 text-white px-6 py-5 rounded-3xl rounded-tr-none shadow-md text-2xl md:text-3xl font-bold flex flex-wrap items-center gap-3 leading-snug">
+                                        <span>{currentQ.userPrefix}</span>
+                                        {gameState === "waiting" ? (
+                                            <span className="inline-block border-b-4 border-white w-20 blink-cursor"></span>
+                                        ) : (
+                                            <span className={`px-3 py-1 rounded-xl bg-white font-black whitespace-nowrap
+                                                ${isCorrect ? 'text-green-600' : 'text-red-500 line-through'}`}>
+                                                {currentQ.options[selectedOption]}
+                                            </span>
+                                        )}
+                                    </div>
+                                    
+                                    {/* If wrong, show the correct answer right below */}
+                                    {gameState === "answered" && !isCorrect && (
+                                        <div className="mt-3 bg-white px-6 py-4 rounded-2xl rounded-tr-none shadow-lg text-green-600 text-2xl font-black border-4 border-green-500 pop-in">
+                                            Correct: {currentQ.options[currentQ.correctIndex]}
+                                        </div>
                                     )}
                                 </div>
-                                
-                                {/* If wrong, show the correct answer right below */}
-                                {gameState === "answered" && !isCorrect && (
-                                    <div className="mt-2 bg-white px-4 py-2 rounded-xl rounded-tr-none shadow text-green-600 font-black border-2 border-green-500 pop-in">
-                                        Correction: {currentQ.options[currentQ.correctIndex]}
-                                    </div>
-                                )}
+                                <div className="text-6xl shrink-0">👤</div>
                             </div>
-                            <div className="text-4xl">👤</div>
-                        </div>
+                        )}
 
                     </div>
 
                     {/* Action / Choices Area */}
-                    <div className="bg-white p-4 rounded-t-3xl shadow-[0_-10px_15px_-3px_rgba(0,0,0,0.1)] z-10 min-h-[250px] flex flex-col justify-center">
-                        {gameState === "playing" ? (
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pop-in">
+                    <div className="bg-white p-5 md:p-6 rounded-t-[2.5rem] shadow-[0_-15px_20px_-5px_rgba(0,0,0,0.1)] z-10 shrink-0 min-h-[300px] flex flex-col justify-center">
+                        {gameState === "waiting" ? (
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pop-in">
                                 {currentQ.options.map((opt, idx) => (
                                     <button 
                                         key={idx}
                                         onClick={() => handleSelect(idx)}
-                                        className="bg-gray-50 hover:bg-green-50 text-gray-800 font-bold p-4 rounded-xl border-2 border-gray-200 hover:border-green-400 transition-colors shadow-sm text-lg active:scale-95"
+                                        className="flex items-center text-left bg-gray-50 hover:bg-green-50 text-gray-800 font-bold p-5 rounded-2xl border-2 border-gray-200 hover:border-green-400 transition-colors shadow-sm text-2xl md:text-3xl active:scale-95"
                                     >
-                                        {opt}
+                                        <span className="flex-shrink-0 flex items-center justify-center w-12 h-12 rounded-xl bg-gray-200 text-gray-600 font-black mr-4 text-2xl">
+                                            {OPTION_LABELS[idx]}
+                                        </span>
+                                        <span>{opt}</span>
                                     </button>
                                 ))}
                             </div>
-                        ) : (
+                        ) : gameState === "answered" ? (
                             <div className="pop-in flex flex-col h-full justify-between">
-                                <div className={`p-4 rounded-xl mb-4 border-2 ${isCorrect ? 'bg-green-50 border-green-200' : 'bg-red-50 border-red-200'}`}>
-                                    <h3 className={`font-black text-xl mb-1 ${isCorrect ? 'text-green-600' : 'text-red-600'}`}>
+                                <div className={`p-6 rounded-2xl mb-6 border-4 ${isCorrect ? 'bg-green-50 border-green-300' : 'bg-red-50 border-red-300'}`}>
+                                    <h3 className={`font-black text-3xl mb-3 ${isCorrect ? 'text-green-600' : 'text-red-600'}`}>
                                         {isCorrect ? '✅ Correct!' : '❌ Oops!'}
                                     </h3>
-                                    <p className="text-gray-700 text-sm font-bold">{currentQ.desc}</p>
+                                    <p className="text-gray-700 text-xl font-bold leading-relaxed">{currentQ.desc}</p>
                                 </div>
                                 <button 
                                     onClick={handleNext}
-                                    className="w-full bg-gray-800 text-white font-bold py-4 rounded-xl text-lg hover:bg-gray-700 transition-colors shadow-[0_4px_0_0_rgba(0,0,0,0.8)] active:shadow-none active:translate-y-1"
+                                    className="w-full bg-gray-800 text-white font-black py-5 rounded-2xl text-2xl hover:bg-gray-700 transition-colors shadow-[0_6px_0_0_rgba(0,0,0,0.8)] active:shadow-none active:translate-y-1 flex justify-center items-center gap-3"
                                 >
-                                    Next Message
+                                    Next Message <Icon name="ArrowRight" size={28} />
                                 </button>
+                            </div>
+                        ) : (
+                            // incoming or reading phase
+                            <div className="flex flex-col items-center justify-center h-full opacity-50">
+                                <Icon name="MessageCircle" size={48} className="text-gray-300 mb-4" />
+                                <p className="text-xl font-bold text-gray-400">Waiting for message...</p>
                             </div>
                         )}
                     </div>
@@ -346,13 +507,5 @@
         const root = ReactDOM.createRoot(document.getElementById('root'));
         root.render(<App />);
     </script>
-    <style>
-        .blink-cursor {
-            animation: blink 1s step-end infinite;
-        }
-        @keyframes blink {
-            50% { border-color: transparent; }
-        }
-    </style>
 </body>
 </html>
